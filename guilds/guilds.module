@@ -1,0 +1,504 @@
+<?php
+// $Id$
+
+/**
+ * @file guilds.module
+ * 
+ * This file contains all functions specific to the guilds.module. Some functions utilized here are 
+ * found in armory.module, and some are made to cooperate with armory.module and characters.module.
+ * @see armory.module
+ * @see characters.module
+ */
+
+/**
+ * Implementation of hook_access() 
+ */
+function guilds_access($op, $node, $account = NULL) {
+  global $user;
+  if (empty($account)) {
+    $account = $user;
+  }
+
+  if ($op != 'create') {
+    $node = (object)$node;
+  }
+
+  if ($op == 'create') {
+    if (user_access('administer armory') || user_access('create armory guilds')) {
+      return TRUE;
+    }
+  }
+  elseif ($op == 'update' || $op == 'delete') {
+    if (user_access('administer armory') || user_access('manage armory guilds')) {
+      return TRUE;
+    }
+    elseif (user_access('create armory guilds') && $account->uid == $node->uid) {
+      return TRUE;
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert()
+ */
+function guilds_insert($node) { 
+  $server_region = explode(', ', $node->server_region);
+  $server_region[1] = drupal_strtolower($server_region[1]);
+  $node->guild = array('guildname' => $node->title, 
+                       'servername' => $server_region[0], 
+                       'region' => $server_region[1]);
+  $guild_info = _guilds_guild_sheet($node->guild);
+  $factions = array(0 => t('Alliance'), 1 => t('Horde'));
+  $faction = $factions[(int) $guild_info->guild['faction']];
+  // Set up ranks.
+  $ranks = '';
+  foreach ($node->rank as $key => $rankname) {
+    if (!empty($rankname)) $ranks .= $key .'^'. $rankname .';';
+  }
+  $ranks = substr($ranks, 0, -1);
+  // Insert the guild into the database.
+  db_query("INSERT INTO {guilds} (nid, vid, guildname, servername, region, faction, ranks) VALUES (%d, %d, '%s', '%s', '%s', '%s', '%s')", 
+           $node->nid, 
+           $node->vid, 
+           $node->title,
+           $server_region[0],
+           $server_region[1], 
+           $faction,
+           $ranks
+          );
+  // Make sure $node->guild has exactly what we need.
+  $gid = db_last_insert_id('{guilds}', 'gid');
+  $node->guild['gid'] = $gid;
+  $class_map = _class_map();
+  foreach ($guild_info->guild->members->character as $character) {
+    if (module_exists('characters')) {
+      $cid_res = db_fetch_object(db_query("SELECT cid FROM {characters} WHERE charname = '%s' AND servername = '%s' AND region = '%s'", 
+                                           $character['name'], 
+                                           $node->guild['servername'],
+                                           $node->guild['region']
+                                         ));
+      $cid = $cid_res->cid;
+      db_query("UPDATE {characters} SET gid = %d WHERE cid = %d", $node->guild['gid'], $cid);
+    }
+    else {
+      $cid = 0;
+    }
+    db_query("INSERT INTO {guilds_members} (gid, cid, charname, class, level, rank) VALUES (%d, %d, '%s', '%s', %d, %d)", 
+              $node->guild['gid'],
+              $cid, 
+              $character['name'],
+              $class_map[(int) $character['classId']],
+              $character['level'],
+              $character['rank']
+            );
+  }
+}
+
+/**
+ * Implementation of hook_update()
+ */
+function guilds_update($node) {
+  $server_region = (!empty($node->server_region)) ? explode(', ', $node->server_region) : explode(', ', $serverregion);
+  $server_region[1] = drupal_strtolower($server_region[1]);
+  $node->guild = array('guildname' => $node->title, 
+                 'servername' => $server_region[0], 
+                 'region' => $server_region[1]);
+  $guild_info = _guilds_guild_sheet($node->guild);
+  $factions = array(0 => t('Alliance'), 1 => t('Horde'));
+  $node->guild['faction'] = $factions[(int) $guild_info['faction']];
+  // Set up ranks.
+  $ranks = '';
+  foreach ($node->rank as $key => $rankname) {
+    if (!empty($rankname)) $ranks .= $key .'^'. $rankname .';';
+  }
+  $ranks = substr($ranks, 0, -1);
+  // Insert the guild into the database.
+  db_query("UPDATE {guilds} SET guildname = '%s', servername = '%s', region = '%s', faction = '%s', ranks = '%s' WHERE nid = %d AND vid = %d", 
+           $node->title,
+           $server_region[0],
+           $server_region[1],
+           $node->guild['faction'],
+           $ranks,
+           $node->nid, 
+           $node->vid
+          );
+  
+  // Since we are updating, some characters may have left the guild and others joined. 
+  // For simplicity, we wipe {guilds_members} and re-insert.
+  $result = db_fetch_object(db_query("SELECT * FROM {guilds} WHERE nid = %d AND vid = %d", $node->nid, $node->vid));
+  $node->guild['gid'] = $result->gid;
+  db_query("DELETE FROM {guilds_members} WHERE gid = %d", $node->guild['gid']);
+  $class_map = _class_map();
+  foreach ($guild_info->guild->members->character as $character) {
+    if (module_exists('characters')) {
+      $cid_res = db_fetch_object(db_query("SELECT cid FROM {characters} WHERE charname = '%s' AND servername = '%s' AND region = '%s'", 
+                                           $character['name'], 
+                                           $node->guild['servername'],
+                                           $node->guild['region']
+                                         ));
+      $cid = $cid_res->cid;
+    }
+    else {
+      $cid = 0;
+    }
+    db_query("INSERT INTO {guilds_members} (gid, cid, charname, class, level, rank) VALUES (%d, %d, '%s', '%s', %d, %d)", 
+              $node->guild['gid'],
+              $cid, 
+              $character['name'],
+              $class_map[(int) $character['classId']],
+              $character['level'],
+              $character['rank']
+            );
+  }
+}
+
+/**
+ * Implementation of hook_delete()
+ */
+function guilds_delete(&$node) {
+  db_query("DELETE FROM {guilds} WHERE nid = %d", $node->nid);
+  db_query("DELETE FROM {guilds_members} WHERE gid = %d", $node->guild['gid']);
+  if (module_exists('characters')) db_query("UPDATE {characters} SET gid = 0 WHERE gid = %d", $node->guild['gid']);
+}
+
+/**
+ * Implementation of hook_validate()
+ */
+function guilds_validate($node, &$form) {
+  // To prevent XSS or CSF attempts, we have to check to see if the server/region input is a valid 
+  // Warcraft server and region.
+  // Note: This is actually also taken care of by the fact that the region is always placed first 
+  // in the uri we create, which is taken from the database, where the maxlength for that field 
+  // is 2 characters long. But one can never be too careful...
+  $raw_serverlist = armory_serverlist();
+  $serverlist = array();
+  foreach ($raw_serverlist['us'] as $key => $value) {
+    $serverlist[] = $value .', US';
+  }
+  foreach ($raw_serverlist['eu'] as $key => $value) {
+    $serverlist[] = $value .', EU';
+  }
+  $serverregion = $node->guild['servername'] .', '. drupal_strtoupper($node->guild['region']);
+  if (!in_array($node->server_region, $serverlist) && !in_array($serverregion, $serverlist)) {
+    form_set_error('server_region', t('An invalid server or region was given. If the server you supplied is a new one, please try again later, when our serverlists are updated.'));
+  }
+  // Check to see if this guild already exists with these server and region credentials.
+  $server_region = (!empty($node->server_region)) ? explode(', ', $node->server_region) : explode(', ', $serverregion);
+  $server_region[1] = drupal_strtolower($server_region[1]);
+  $sql = "SELECT gid FROM {guilds} WHERE guildname = '%s' AND servername = '%s' AND region = '%s'";
+  $arguments = array($node->title, $server_region[0], $server_region[1]);
+  if (!empty($form['#node']->guild['gid'])) {
+    $sql .= " AND gid != %d";
+    $arguments[] = $form['#node']->guild['gid'];
+  }
+  $result = db_query($sql, $arguments);
+  if (db_affected_rows() > 0) {
+    form_set_error('title', t('The guild @guildname at @server_region already exists in the database. The same guild cannot be saved more than once.', array('@guildname' => $node->title, '@server_region' => $node->server_region)));
+  }
+}
+
+/**
+ * Implementation of hook_nodeapi()
+ */
+function guilds_nodeapi(&$node, $op, $teaser, $page) {
+  switch ($op) {
+    case 'delete revision' :
+      db_query("DELETE FROM {guilds} WHERE nid = %d AND vid = %d", $node->nid, $node->vid);
+      db_query("DELETE FROM {guilds_members} WHERE gid = %d", $node->guild['gid']);
+      break;
+  }
+}
+
+
+/**
+ * Implementation of hook_load()
+ */
+function guilds_load($node) {
+  $sql = "SELECT * FROM {guilds} WHERE nid = %d AND vid = %d";
+  $result = db_query($sql, $node->nid, $node->vid);
+  $row = db_fetch_object($result);
+  $node->guild = array(
+    'guildname' => $row->guildname,
+    'servername' => $row->servername,
+    'region' => $row->region,
+    'server_region' => $row->servername .', '. drupal_strtoupper($row->region),
+    'gid' => $row->gid,
+  );
+  if (!empty($row->ranks)) {
+    $ranks = explode(';', $row->ranks);
+    foreach ($ranks as $item) {
+      $rank = explode('^', $item);
+      $node->guild['ranks'][$rank[0]] = $rank[1];
+    }
+  }
+
+  return $node;
+}
+
+/**
+ * Implementation of hook_view()
+ */
+function guilds_view($node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+  $node->content['guild'] = array(
+    '#value' => theme('guilds_show_guild', $node),
+    '#weight' => 5,
+  );
+
+  return $node;
+}
+
+/**
+ * Implementation of hook_node_info()
+ */
+function guilds_node_info() {
+  return array(
+    'guild' => array(
+      'name' => t('Guild profile'),
+      'module' => 'guilds',
+      'description' => t('Register a guild for guilds.module to load data about it and its character from the Armory.'),
+      'title_label' => t('Guildname'),
+      'body_label' => t('Guild description'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_block()
+ */
+function guilds_block($op = 'list', $delta = 0, $edit = array()) {
+  switch ($op) {
+    case 'list' : 
+      $blocks[0]['info'] = t('Recent guilds');
+      $blocks[0]['cache'] = BLOCK_NO_CACHE;
+      return $blocks;
+    case 'view' : 
+      $sql = "SELECT * FROM {guilds} ORDER BY gid DESC LIMIT 5";
+      $result = db_query($sql);
+      if (db_affected_rows() == 0) return;
+      $guilds = array();
+      while ($row = db_fetch_object($result)) {
+        $guilds[] = l($row->guildname, 'node/'. $row->nid);
+      }
+      $block['subject'] = t('Recent guilds');
+      $block['content'] = theme('item_list', $guilds);
+      return $block;
+  }
+}
+
+/**
+ * Implementation of hook_form()
+ */
+function guilds_form(&$node, $form_state) {
+  $type = node_get_types('type', $node);
+
+  $form['xml_info'] = array(
+    '#type' => 'item',
+    '#value' => t('Note that when you save the node, the XML file(s) will be loaded from wowarmory.com. Depending on server load, this may take a while. Please be patient.'),
+    '#prefix' => '<div class="messages status"><p>',
+    '#suffix' => '</p></div>',
+    '#weight' => -10,
+  );
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => check_plain($type->title_label),
+    '#required' => TRUE,
+    '#default_value' => $node->title,
+  );
+  $form['server_region'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Server/region'),
+    '#description' => t('Type in the first letters of your server, and choose the appropriate one from the list. Should be typed in as "Servername, RG" - make sure a region is specified!'),
+    '#autocomplete_path' => 'armory_server',
+    '#required' => TRUE,
+    '#default_value' => $node->guild['server_region'],
+  );
+  $form['body'] = array(
+    '#type' => 'textarea',
+    '#title' => check_plain($type->body_label),
+    '#rows' => 20,
+    '#required' => FALSE,
+    '#description' => t('Write some information about the guild, for example if the focus is PvE or PvP, a brief history...'),
+    '#default_value' => $node->body,
+  );
+  $form['ranknames'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Guild rank names'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  for ($i = 0; $i <= 10; $i++) {
+    $rank = ($i == 0) ? t('Guild leader') : t('Rank @num', array('@num' => $i));
+    $form['ranknames']['rank'][$i] = array(
+      '#type' => 'textfield',
+      '#title' => $rank,
+      '#default_value' => $node->guild['ranks'][$i], 
+      '#parents' => array('rank', $i),
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function guilds_theme() {
+  return array(
+    'guilds_show_guild' => array(
+      'arguments' => array('node' => NULL),
+    ),
+  );
+}
+
+/**
+ * Theme function for displaying a guild with a member list.
+ * 
+ * @param $node
+ * The standard Drupal $node variable. We pass the whole thing because we might need it later on...
+ * @return
+ * Returns a themed output of the guild information.
+ */
+function theme_guilds_show_guild($node) { 
+  $armorypath = drupal_get_path('module', 'armory');
+  $style = variable_get('armory_style', 'armory-plain-bright');
+  drupal_add_css($armorypath .'/armory.css');
+  drupal_add_css($armorypath .'/'. $style .'.css');
+  // I'd rather do this at hook_load(), but that leads to unserialize errors
+  // Rumors say it's because of simplexml. 
+  // @see _guilds_guild_sheet()
+  $node->guild['guildinfo'] = _guilds_guild_sheet($node->guild);
+  $rows = array();
+  $sql = "SELECT gm.charname, gm.class, gm.level, gm.rank, gm.cid 
+          FROM {guilds_members} AS gm 
+          WHERE gid = %d";
+  $sql_count = "SELECT COUNT(gid) as num FROM {guilds_members} WHERE gid = %d";
+  $result = pager_query($sql . tablesort_sql(_guilds_create_header()), 25, $node->guild['gid'], $sql_count, $node->guild['gid'], $node->guild['gid']);
+  while ($row = db_fetch_object($result)) {
+    // Set up the uri to this character's Armory page.
+    $char_uri = 'http://'. $node->guild['region'] .'.wowarmory.com/character-sheet.xml?r='. 
+                  drupal_urlencode($node->guild['servername']) .'&cn='. drupal_urlencode(check_plain($row->charname));
+
+    // If this character is registered in a profile here, link the name to that profile, otherwise just output name.
+    $charname = (!empty($row->cid)) ? _guilds_character_node_link((int)$row->cid) : check_plain($row->charname);
+
+    // Append the Armory link with an icon as the link.
+    $linktitle = t('View @character at the Armory', array('@character' => $row->charname));
+    $charname .= ' '. l(_armory_external_icon(), $char_uri, array('html' => TRUE, 
+                                                                   'attributes' => array('title' => $linktitle)));
+    // To avoid misunderstandings, set rank == 0 to 'Guild leader'. Other ranks remain at numeric 
+    // value, because we have no way of knowing what the guild has named that rank in-game.
+    // Exception: If the user has supplied rank-names, we set them up for output here.
+    if (count($node->guild['ranks']) > 0) {
+      $rank = (!empty($node->guild['ranks'][$row->rank])) ? check_plain($node->guild['ranks'][$row->rank]) : $row->rank;
+    }
+    else {
+      $rank = ($row->rank == 0) ? t('Guild leader') : $row->rank;
+    }
+    $rows[] = array('data' => array('charname' => $charname, 
+                                    'rank' => $rank, 
+                                    'class' => $row->class, 
+                                    'level' => $row->level,
+                                   ),
+                    'class' => 'character-row '. armory_id_safe($row->class),
+                   );
+  }
+  $sql_count = db_query("SELECT COUNT(gid) as num FROM {guilds_members} WHERE gid = %d", $node->guild['gid']); 
+  $num_members = db_fetch_object($sql_count);
+  $guild_armory_link = 'http://'. $node->guild['region'] .'.wowarmory.com/guild-info.xml?'. $node->guild['guildinfo']->guildHeader['url'];
+  $output = '<div class="armory-table">';
+  $output .= '<p>'. t('View <a href="@g_a_link" title="View @guildname at the Armory">@guildname</a> of @server_region at the Armory.', 
+                      array('@g_a_link' => $guild_armory_link, 
+                            '@guildname' => check_plain($node->title), 
+                            '@server_region' => $node->guild['server_region'])) .'</p>';
+  $output .= theme('table', _guilds_create_header(), $rows); // Set up the themed table output.
+  $output .= theme('pager', array(), 25, $node->guild['gid']);
+  $output .= '<p>'. $num_members->num . t(' members total.') .'</p></div>'; // Append the total member number.
+
+  return $output;
+}
+
+/**
+ * Helper function for managing and delivering guild XML data.
+ * 
+ * @param $guild
+ * At minimum an array containing guildname, servername and region.
+ * @return
+ * Updates the XML-file if necessary and returns the data from it as an object.
+ * @see armory.module
+ */
+function _guilds_guild_sheet($guild) {
+  if (isset($guild['guildname']) && isset($guild['servername']) && isset($guild['region'])) {
+    $now = time();
+    $maxage = variable_get('armory_characters_maxage', 86400);
+    $local_dir = file_directory_path() .'/armory/guilds';
+    $guildname = str_replace(' ', '_', $guild['guildname']); 
+    $servername = str_replace(' ', '_', $guild['servername']);
+    $region = $guild['region'];
+    $local_file = $local_dir .'/'. $guildname .'_'. 
+                                     $servername .'_'.  
+                                     $region .'.xml';  
+    $uri = 'http://'. $region .'.wowarmory.com/guild-info.xml?r='. 
+           drupal_urlencode($guild['servername']) .'&gn='.             
+           drupal_urlencode($guild['guildname']);
+    armory_get_xml($uri, $local_dir, $local_file, 1, $maxage);
+    $data = simplexml_load_file($local_file); 
+    return $data->guildInfo;
+  }
+  else {
+    drupal_set_message(t('The guild information supplied by the guilds module was incomplete. Please make sure that your guild is saved with a valid server and region.'), 'warning');
+  }
+}
+
+/**
+ * Helper function to create headers for the guild members table.
+ * Kept in a function to ease any future updating.
+ * 
+ * @return
+ * Returns an array with headers and sort/order fields for use with sortable tables.
+ */
+function _guilds_create_header() {
+  return array(array('data' => t('Name'), 'field' => 'gm.charname'), 
+               array('data' => t('Rank'), 'field' => 'gm.rank', 'sort' => 'asc'), 
+               array('data' => t('Class'), 'field' => 'gm.class'), 
+               array('data' => t('Level'), 'field' => 'gm.level'),
+              );
+}
+
+/**
+ * Helper function to create an internal link to a character node, if the character 
+ * in question is registered in a character profile.
+ * 
+ * @return
+ * Returns the internal path to the node the character is registered on.
+ */
+function _guilds_character_node_link($cid = 0) {
+  if (module_exists('characters') && $cid != 0) {
+    $sql = "SELECT nid, vid, charname, servername, region FROM {characters} AS c WHERE c.cid = %d";
+    $item = db_fetch_object(db_query($sql, $cid));
+    $node = db_fetch_object(db_query("SELECT vid FROM {node} WHERE nid = %d", $item->nid));
+    $id_string = 'char-'. armory_id_safe($item->charname) .'-'. armory_id_safe($item->servername) .'-'. armory_id_safe($item->region);
+    if ($item->vid == $node->vid) {
+      return l($item->charname, 'node/'. $item->nid, array('fragment' => $id_string, 'attributes' => array('title' => t('Go to @charname here at this site', array('@charname' => $item->charname)))));
+    }
+    return $item->charname;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,141 @@
+<?php
+// $Id$ 
+
+/**
+ * @file characters.install
+ * The installation schema for characters.module.
+ */
+
+/**
+ * Implementation of hook_install()
+ */
+function characters_install() {
+  drupal_install_schema('characters');
+  drupal_set_message(t('Characters installed.'));
+}
+
+/**
+ * Implementation of hook_uninstall()
+ */
+function characters_uninstall() {
+  drupal_uninstall_schema('characters');
+}
+
+/**
+ * Implementation of hook_schema() 
+ */
+function characters_schema() {
+  $schema['characters'] = array(
+    'description' => 'Stores character names, server names and regions for characters to be displayed on this site.',
+    'fields' => array(
+      'cid' => array(
+        'description' => 'The unique character ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'description' => 'The {node}.nid of the node this character belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'vid' => array(
+        'description' => 'The {node}.vid of the node version this character belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'main' => array(
+        'description' => 'Indicates whether this is a main character.',
+        'type' => 'int',
+        'length' => 1,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'charname' => array(
+        'description' => 'The character name.',
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'class' => array(
+        'description' => 'The character class.',
+        'type' => 'varchar',
+        'length' => 20,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'level' => array(
+        'description' => 'The character level.',
+        'type' => 'int',
+        'length' => 3,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'gid' => array(
+        'description' => 'The {guilds}.gid of the guild this character belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'servername' => array(
+        'description' => 'The server the character is located on.',
+        'type' => 'varchar',
+        'length' => 30,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'region' => array(
+        'description' => 'The region the server is located in.',
+        'type' => 'varchar',
+        'length' => 2, 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'profession0' => array(
+        'description' => "The character's first profession.",
+        'type' => 'varchar',
+        'length' => 25, 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'profession1' => array(
+        'description' => "The character's second profession.",
+        'type' => 'varchar',
+        'length' => 25, 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'faction' => array(
+        'description' => "The character's faction.",
+        'type' => 'varchar',
+        'length' => 10, 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'main_alt' => array(
+        'description' => "If this character is the player's main or alt.",
+        'type' => 'int',
+        'length' => 1, 
+        'not null' => TRUE,
+        'default' => 2,
+      ),
+    ), // End fields.
+    'indexes' => array(
+      'serv_reg' => array('servername', 'region'),
+      'gid' => array('gid'),
+      'nid' => array('nid'),
+      'faction' => array('faction'),
+      'main_alt' => array('main_alt'),
+    ), // End indexes.
+    'primary key' => array('cid'),
+  );
+
+  return $schema;
+}
+
+
+

@@ -1,0 +1,70 @@
+/* Armory overview */
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs {
+  background: transparent;
+  line-height: 2em;
+  list-style: none;
+  margin: 0 0 1em 0;
+  padding: 0.7em;
+}
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li {
+  background: transparent;
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li a {
+  border: 1px solid;
+  border-radius: 3px;
+  -moz-border-radius: 3px;
+  -webkit-border-radius: 3px;
+  outline: none;
+  padding: 7px 15px;
+  text-decoration: none;
+}
+/* Characters */
+.characters-character-tabs {
+  margin: 10px 0;
+}
+.characters-character-tabs .item-list ul.characters-character-tab-links {
+  background: transparent;
+  list-style: none;
+  margin: 0;
+  padding: 10px 0 7px 10px;
+}
+.characters-character-tabs .item-list ul.characters-character-tab-links li {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+.characters-character-tabs .item-list ul.characters-character-tab-links li a {
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+  -moz-border-radius-topleft: 3px; 
+  -webkit-border-top-left-radius: 3px;
+  -moz-border-radius-topright: 3px; 
+  -webkit-border-top-right-radius: 3px;
+  outline: none;
+  padding: 10px 15px;
+}
+.characters-character-sheet {
+  padding: 10px 25px;
+}
+.characters-character-sheet a {
+  text-decoration: none;
+}
+
+/* Guilds */
+.armory-guild-table table th, .armory-guild-table table td {
+  padding: 4px 8px;
+}
+.armory-guild-table table a {
+  text-decoration: underline;
+}
+ 
+/* General */
+img.armory-ext-icon {
+  border: 0;
+}
+.ui-tabs-hide {
+  display: none;
+}

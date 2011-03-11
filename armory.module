@@ -1,0 +1,575 @@
+<?php
+// $Id$
+
+// TODO Blocks med recent og random characters og guilds.
+// TODO Bruke check_plain, filter_xss() osv. på hele herligheten.
+
+/**
+ * @file armory.module
+ * This file contains the menu hooks and some critical helper functions for the 
+ * other included modules (guilds and characters).
+ */
+
+// Constants.
+define('ARMORY_DEFAULT_INTRO', t('Welcome to the Warcraft Armory page for !site. This is a listing of all guilds and characters registered on this site.', array('!site' => variable_get('site_name', "Default site name"))));
+define('EXTERNAL_ARMORY_LINK_TEXT', t('External Armory link'));
+
+/**
+ * Implementation of hook_menu()
+ */
+function armory_menu() {
+  $items = array();
+
+  $items['admin/settings/armory'] = array(
+    'title'            => 'Warcraft Armory',
+    'description'      => 'Settings for your World of Warcraft armory modules.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('armory_settings'),
+    'access arguments' => array('administer armory'),
+    'type'             => MENU_NORMAL_ITEM,
+    'file'             => 'armory.admin.inc',
+  );
+
+  $items['armory'] = array(
+    'title'            => 'Warcraft Armory',
+    'description'      => 'Armory main page, with overview of guilds and characters.',
+    'page callback'    => 'armory_main',
+    'access arguments' => array('access content'),
+    'type'             => MENU_NORMAL_ITEM,
+  );
+  $items['armory/overview'] = array(
+    'title'            => 'Overview',
+    'description'      => 'Armory main page, with overview of guilds and characters.',
+    'page callback'    => 'armory_main',
+    'access arguments' => array('access content'),
+    'type'             => MENU_DEFAULT_LOCAL_TASK,
+  );
+  $items['armory/profession'] = array(
+    'title'            => 'Professions',
+    'description'      => 'Looking for a professional for a particular job?',
+    'page callback'    => 'armory_profession',
+    'page arguments'   => array(2, 3),
+    'access arguments' => array('access content'),
+    'type'             => MENU_LOCAL_TASK,
+  );
+
+  $items['armory_server'] = array(
+    'page callback'    => 'armory_ajax_server',
+    'access arguments' => array('access content'),
+    'type'             => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm()
+ */
+function armory_perm() {
+  return array('administer armory', 'create armory profile', 'manage armory profiles', 'create armory guilds', 'manage armory guilds');
+}
+
+/**
+ * Implementation of hook_cron()
+ * 
+ * @return
+ * Fetches a list of servers from Blizzard's XML-feed.
+ */
+function armory_cron() {
+  // Update serverlists. Also create guilds and characters directories if they do not exist.
+  $armory_dir = file_directory_path() .'/armory';
+  file_check_directory($armory_dir, 1);
+  $serverlist_dir = file_directory_path() .'/armory/serverlists';
+  file_check_directory($serverlist_dir, 1);
+  $character_dir = file_directory_path() .'/armory/characters';
+  file_check_directory($character_dir, 1);
+  $guild_dir = file_directory_path() .'/armory/guilds';
+  file_check_directory($guild_dir, 1);
+  include_once "armory.admin.inc";
+  armory_get_servers(0);
+}
+
+/**
+ * Function for listing guilds and characters and displaying various information and statistics about them.
+ * 
+ * 
+ * @return
+ * Returns a list of registered guilds and characters, with links to their nodes, plus some additional 
+ * information about this "armory".
+ */
+function armory_main() {
+  $title = t('Armory overview');
+  drupal_set_title($title);
+  $armorypath = drupal_get_path('module', 'armory');
+  $style = variable_get('armory_style', 'armory-plain-bright');
+  drupal_add_css($armorypath .'/armory.css');
+  drupal_add_css($armorypath .'/'. $style .'.css');
+  $intro = variable_get('armory_intro_text', ARMORY_DEFAULT_INTRO);
+  $tabs = '';
+  $guilds = '';
+  $characters = '';
+  $meta = '';
+  // An image to use in links to the Armory.
+  $ext_img = _armory_external_icon();
+  // First, we set up guilds.
+  if (module_exists('guilds')) {
+    $sql = "SELECT g.gid, g.nid, g.vid, g.guildname, g.servername, g.region, g.faction, gm.gid, COUNT(gm.gid) AS members
+            FROM {guilds} as g LEFT JOIN {guilds_members} AS gm 
+            ON g.gid = gm.gid
+            GROUP BY g.gid";
+    $pre_result = db_query($sql);
+    $total_guilds = db_affected_rows();
+    $sql_sort = array(array('data' => t('Guildname'), 'field' => 'g.guildname'),
+                      array('data' => t('Servername'), 'field' => 'g.servername'),
+                      array('data' => t('Region'), 'field' => 'g.region'),
+                      array('data' => t('Members'), 'field' => 'members'),
+                     );
+    $sql_count = "SELECT COUNT(gid) AS num FROM {guilds}";
+    // Element ID is set to 1, because of multiple pagers.
+    $result = pager_query($sql . tablesort_sql($sql_sort), 10, 1, $sql_count); 
+    $rows = array();
+    while ($row = db_fetch_object($result)) {
+      $guri = 'http://'. $row->region .'.wowarmory.com/guild-info.xml?r='. 
+                    drupal_urlencode($row->servername) .'&gn='. drupal_urlencode($row->guildname);
+      $rows[] = array('data' => array('guildname' => l($row->guildname, 'node/'. $row->nid) .' '. l($ext_img, $guri, array('html' => TRUE)), 
+                                      'servername' => $row->servername, 
+                                      'region' => drupal_strtoupper($row->region), 
+                                      'members' => $row->members, 
+                                     ), 
+                      'class' => ' guild-row '. armory_id_safe($row->faction),
+                     );
+    }
+    $guildcount = count($rows);
+    if ($guildcount > 1) {
+      $guilds = '<h3>'. t('Guilds') .'</h3>';
+      $guilds .= '<div class="armory-table">'. theme('table', $sql_sort, $rows) .'</div>';
+      // Element ID is set to 1, because of multiple pagers.
+      // @see armory.module, line 200
+      $guilds .= theme('pager', array(), 10, 1) . '<p>'. t('@total_guilds guilds total.', array('@total_guilds' => $total_guilds)) .'</p>';
+    }
+    // If only one guild is in the database, load and view that guild-node.
+    elseif ($guildcount == 1) {
+      $row = db_fetch_object($pre_result);
+      $node = node_load($row->nid, $row->vid);
+      $guilds = node_view($node);
+    }
+  }
+
+  // Next, characters.
+  if (module_exists('characters')) {
+    $sql = "SELECT c.cid, c.nid, c.gid, c.charname, c.servername, c.region, c.class, c.level, c.faction, c.main_alt, g.guildname, g.nid AS gnid
+            FROM {characters} AS c LEFT JOIN {guilds} AS g
+            ON c.gid = g.gid";
+    $result = db_query($sql);
+    $total_chars = db_affected_rows();
+    $sql_sort = array(array('data' => t('Character'), 'field' => 'c.charname'),
+                      array('data' => t('Guild')),
+                      array('data' => t('Servername'), 'field' => 'c.servername'),
+                      array('data' => t('Region'), 'field' => 'c.region'),
+                      array('data' => t('Class'), 'field' => 'c.class'),
+                      array('data' => t('Level'), 'field' => 'c.level'),
+                      array('data' => t('Main/alt'), 'field' => 'c.main_alt'),
+                     );
+    $sql_count = "SELECT COUNT(cid) AS num FROM {characters}";
+    // Element ID is set to 2, because of multiple pagers.
+    $result = pager_query($sql . tablesort_sql($sql_sort), 25, 2, $sql_count);
+    $rows = array();
+    while ($row = db_fetch_object($result)) {
+      $character = array('charname' => $row->charname, 'servername' => $row->servername, 'region' => $row->region);
+      $char_info = _characters_character_sheet($character);
+      $curi = 'http://'. $row->region .'.wowarmory.com/character-sheet.xml?'. $char_info->character['charUrl'];
+      $guri = 'http://'. $row->region .'.wowarmory.com/guild-info.xml?'. $char_info->character['guildUrl'];
+      $id_string = 'char-'. armory_id_safe($row->charname) .'-'. armory_id_safe($row->servername) .'-'. armory_id_safe($row->region);
+
+      // Even if the character's guild is not here, we should add the name, and link to the armory page.
+
+      $guildlink = ($row->gnid > 0) ? l($row->guildname, 'node/'. $row->gnid) : $char_info->character['guildname'];
+      $guildlink .= (!empty($char_info->character['guildname'])) ? ' '. l($ext_img, $guri, array('html' => TRUE)) : '';
+      $main_alt_map = array(1 => t('Main'), 3 => t('Alt'));
+      $rows[] = array('data' => array('charname' => l($row->charname, 'node/'. $row->nid, array('fragment' => $id_string)) .' '. 
+                                                    l($ext_img, $curi, array('html' => TRUE)), 
+                                      'guildname' => $guildlink, 
+                                      'servername' => $char_info->character['realm'], 
+                                      'region' => drupal_strtoupper($row->region),
+                                      'class' => $row->class, 
+                                      'level' => $row->level, 
+                                      'main_alt' => $main_alt_map[(int)$row->main_alt], 
+                                     ),
+                      'class' => 'character-row '. armory_id_safe($row->faction) .' '. armory_id_safe($row->class, 'class'),
+                     );
+    }
+    $none_exist = t('No characters or guilds exist in the database yet.');
+    $charcount = count($rows);
+    if (($charcount == 0) && ($guildcount == 0)) {
+      drupal_set_message($none_exist, 'warning');
+    }
+    if ($charcount > 0) {
+      $characters = '<h3>'. t('Characters') .'</h3>';
+      $characters .= '<div class="armory-table">'. theme('table', $sql_sort, $rows) .'</div>';
+      // Element ID is set to 2, because of multiple pagers.
+      // @see armory.module, line 144
+      $characters .= theme('pager', array(), 25, 2) . '<p>'. t('@total_chars characters total.', array('@total_chars' => $total_chars)) .'</p>';
+    }
+  }
+
+  return theme('armory_overview', $intro, $tabs, $guilds, $characters, $meta);
+}
+
+/**
+ * Function to look up characters with certain professions.
+ * 
+ * @param $profession
+ * The profession you want to list.
+ * @param $level
+ * Minimum level of profession for the character to be listed here.
+ * 
+ * @return
+ * Returns a themed table listing all characters with a profile on the site, that meets the profession
+ * and profession-level requirements given.
+ */
+function armory_profession($profession = '', $level = 0) {
+  if (module_exists('characters') == FALSE) {
+    $char_req = t('The Characters module is required in order to search for crafters in the armory.');
+    drupal_set_message($char_req, 'error');
+  }
+  $title = t('Professions overview');
+  drupal_set_title($title);
+  $armorypath = drupal_get_path('module', 'armory');
+  $style = variable_get('armory_style', 'armory-plain-bright');
+  drupal_add_css($armorypath .'/armory.css');
+  drupal_add_css($armorypath .'/'. $style .'.css');
+  $output = '';
+
+  // Different queries based on what arguments are passed.
+  if (empty($profession)) {
+    $sql = "SELECT * FROM {characters} WHERE profession0 > '' ORDER BY profession0 DESC";
+    $args = array();
+  }
+  elseif (!empty($profession)) {
+    $sql = "SELECT * FROM {characters} WHERE profession0 LIKE '%s%' OR profession1 LIKE '%s%' ORDER BY profession0, profession1 DESC";
+    $args = array($profession, $profession);
+  }
+  $result = db_query($sql, $args);
+  $rows = array();
+  while ($row = db_fetch_object($result)) {
+    if (!empty($row->profession0)) {
+      $id_string = 'char-'. armory_id_safe($row->charname) .'-'. armory_id_safe($row->servername) .'-'. armory_id_safe($row->region);
+      $charname = l($row->charname, 'node/'. $row->nid, array('fragment' => $id_string));
+      $profession0 = explode(';', $row->profession0);
+      $profession1 = (!empty($row->profession1)) ? explode(';', $row->profession1) : array();
+      // If we are filtering, make sure only those who meet the critera are included.
+      if (!empty($profession)) {
+        if (($profession0[0] == $profession) && ($profession0[1] >= $level)) $rows[] = array($charname, 
+                                                                                            implode(': ', $profession0), 
+                                                                                            implode(': ', $profession1));
+        if (($profession1[0] == $profession) && ($profession1[1] >= $level)) $rows[] = array($charname, 
+                                                                                            implode(': ', $profession0), 
+                                                                                            implode(': ', $profession1));
+      }
+      else {
+        $rows[] = array('data' => array($charname, implode(': ', $profession0), implode(': ', $profession1)),
+                        'class' => 'character-row '. armory_id_safe($row->faction) .' '. armory_id_safe($row->class));
+      }
+    }
+  }
+  $chars_found = count($rows);
+  $no_characters = t('No characters found.');
+  if ($chars_found == 0) {
+    drupal_set_message($no_characters, 'warning');
+  }
+  $name = t('Character');
+  $prof1 = t('First profession');
+  $prof2 = t('Second profession');
+  $header = array($name, $prof1, $prof2);
+  $output = drupal_get_form('armory_prof_select_form', array(&$form_state, $profession, $level));
+  $output .= '<div class="armory-table">'. theme('table', $header, $rows) .'<p>'. t('Found @chars_found potential craftsmen for your search.', array('@chars_found' => $chars_found)) .'</p></div>';
+
+  return $output;
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function armory_theme() {
+  return array(
+    'armory_overview' => array(
+      'arguments' => array('intro' => NULL, 'tabs' => NULL, 'guilds' => NULL, 'characters' => NULL, 'meta' => NULL),
+      'template' => 'armory-overview'
+    ),
+  );
+}
+
+/**
+ * Autocomplete ajax for the server/region textfield.
+ */
+function armory_ajax_server($string = '') {
+  $matches = array();
+  if ($string) {
+    $raw_serverlist = armory_serverlist();
+    $serverlist = array();
+    foreach ($raw_serverlist['us'] as $key => $value) {
+      $serverlist[] = $value .', US';
+    }
+    foreach ($raw_serverlist['eu'] as $key => $value) {
+      $serverlist[] = $value .', EU';
+    }
+    foreach ($serverlist as $value) {
+      if (preg_match("/$string/i", $value)) {
+        $matches[$value] = $value;
+      }
+    }
+  }
+  drupal_json($matches);
+}
+
+/**
+ * Function for setting up a serverlist.
+ * 
+ * @return
+ * Returns an array of regions, as arrays with their respective servers.
+ */
+function armory_serverlist() {
+  $serverlist_dir = file_directory_path() .'/armory/serverlists';
+
+  $output = '';
+
+  $serverlist = array('us' => array(), 'eu' => array());
+  $handle = opendir($serverlist_dir);
+  while (false !== ($file = readdir($handle))) {
+
+    if ($file != "." && $file != "..") {
+      $file = $serverlist_dir .'/'. $file;
+      // Due to the differences between the xml-files for different regions, each must be handled a bit
+      // differently, and then added to our array that can be "universally" used by this module (and others).
+      // Also, the $data = simplexml... is done inside each if statement, because there might be other files
+      // in the directory, resulting in errors (e.g. the notorious .DS_Store files on OS X).
+      if (preg_match("/us.xml/i", $file) && (filesize($file) > 6000)) { // filesize() to see if the file actually has content.
+        $data = simplexml_load_file($file);
+        foreach ($data->rs->r as $item) {
+          $serverlist['us'][] = $item['n']; 
+        }
+      }
+      elseif (preg_match("/eu.xml/i", $file) && (filesize($file) > 6000)) {
+        $data = simplexml_load_file($file);
+        foreach ($data->channel->item as $item) {
+          if ($item->title == 'Alert') continue;
+          $serverlist['eu'][] = $item->title;
+        }
+      }
+      else {
+        continue;
+      }
+    }
+  }
+  closedir($handle);
+
+  return $serverlist;
+}
+
+function armory_get_xml($uri, $local_dir, $local_file, $message = 0, $maxage = 0) {
+  $success = FALSE;
+  $local_file_age = @filemtime($local_file);
+  // In order to ensure that we are actually getting an up-to-date character-sheet
+  // and not an error-document (like when the armory is down...), we use a temp file,
+  // load it and check for a valid object.
+  $now = time();
+  if (($maxage > 0) && (($now - $local_file_age) > $maxage)) {
+    if (function_exists('curl_init')) { 
+      $c_handle = curl_init($uri);
+      // Blizzard only serves XML to certain user-agents, so we set one that gets it.
+      // For future extensions, like logging on at the armory to get guild calendars, 
+      // we add cookies to allow for that.
+      curl_setopt($c_handle, CURLOPT_URL, $uri);
+      curl_setopt($c_handle, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.1) Gecko/20090612 Firefox/3.5"); 
+      curl_setopt($c_handle, CURLOPT_FOLLOWLOCATION, 1); 
+      curl_setopt($c_handle, CURLOPT_HEADER, 0); 
+      curl_setopt($c_handle, CURLOPT_RETURNTRANSFER, 1);
+      curl_setopt($c_handle, CURLOPT_RETURNTRANSFER, 1);
+      curl_setopt($c_handle, CURLOPT_COOKIEFILE, $local_dir .'/cookiefile.txt'); 
+      curl_setopt($c_handle, CURLOPT_COOKIEJAR, $local_dir .'/cookiejar.txt');	
+      curl_setopt($c_handle, CURLOPT_CONNECTTIMEOUT, $timeout);
+      curl_setopt($c_handle, CURLOPT_TIMEOUT, $timeout);
+      curl_exec($c_handle);
+      $c_info = curl_getinfo($c_handle);
+      if ($c_info['http_code'] != '200') { // If the server is unresponsive, or down for maintenance, we provide an error.
+        $no_data = t("The file retrieved from @url was not a valid XML-file for this data type. This may be because Blizzard's servers are is down for maintenance. Also, make sure that the location you specified is spelled correctly.", array('@url' => $uri));
+        if ($message == 1) drupal_set_message($no_data, 'warning');
+        watchdog('yr_verdata', $no_data);
+        $success = FALSE;
+      }
+      else { // The server returned http = 200, we assume we can load the xml data.
+             // Note: Experienced an issue where the xml contained some html with
+             // entities in the description of an 'Alert' item.
+             // To avoid this, we remove any such descriptions.
+             // Note 2: I've not yet encountered this from the us realmlist, so for
+             // now, we only do this with the eu list.
+        $f_handle = fopen($local_file, 'w');
+        curl_setopt($c_handle, CURLOPT_FILE, $f_handle);
+        curl_exec($c_handle);
+        fclose($f_handle);
+        // If an 'Alert' is found in the feed from wow-europe, we remove its description.
+        // Note that we do not remove the entire <item>, because we do not know exactly
+        // which lines in the file they are, so we keep the 'Alert' title and only remove
+        // the following three lines (always link, guid and description). 'Alert' is then
+        // filtered out on the fly when the serverlist is loaded.
+        $rarray = file($local_file);
+        foreach ($rarray as $key => $line) {
+          if (preg_match("/Alert/i", $line) && preg_match("/EU/i", $rarray[$key+1])) {
+              unset($rarray[$key+1]);
+              unset($rarray[$key+2]);
+              unset($rarray[$key+3]);
+          }
+        }
+        // Write to file.
+        file_put_contents($local_file, $rarray, LOCK_EX);
+        $success = TRUE;
+      }
+      curl_close($c_handle);
+      // Delete the cookies, to prevent anyone from trying to use them to gain access
+      // to the armory as the current user.
+      @unlink($local_dir .'/cookiefile.txt');
+      @unlink($local_dir .'/cookiejar.txt');
+    }
+    else {
+      if ($message == 1) drupal_set_message(t('No method for retrieving armory data was found. You must have PHP 5 with cURL available.'), 'error');
+      watchdog('armory', t('Could not retrieve remote XML data from @url, because cURL was not found.', array('@url' => $uri)));
+    }
+  }
+  else {
+    $success = 'not_maxage';
+  }
+  return $success;
+}
+
+/**
+ * Converts a string to a suitable html ID attribute.
+ *
+ * http://www.w3.org/TR/html4/struct/global.html#h-7.5.2 specifies what makes a
+ * valid ID attribute in HTML. This function:
+ *
+ * - Ensure an ID starts with an alpha character by optionally adding an 'id'.
+ * - Replaces any character except alphanumeric characters with dashes.
+ * - Converts entire string to lowercase.
+ * 
+ * Credit for this function goes to the Zen theme and its creator, John Albin.
+ * 
+ * Modified to accomodate classes as well. Not a big thing, but so as to not have 
+ * classes prepended with 'id'.
+ *
+ * @param $string
+ *   The string
+ * @return
+ *   The converted string
+ */
+function armory_id_safe($string, $attr = 'id') {
+  // Replace with dashes anything that isn't A-Z, numbers, dashes, or underscores.
+  $string = drupal_strtolower(preg_replace('/[^a-zA-Z0-9-]+/', '-', $string));
+  // If the first character is not a-z, add 'id' in front.
+  if (!ctype_lower($string{0})) { // Don't use ctype_alpha since its locale aware.
+    $string = $attr . $string;
+  }
+  return $string;
+}
+
+/**
+ * Helper function for mapping classId from the Armory XML data with the actual name of the class.
+ * 
+ * @return
+ * A keyed array with class names in English, translatable.
+ */
+function _class_map() {
+  return array(1 => t('Warrior'),
+               2 => t('Paladin'),
+               3 => t('Hunter'),
+               4 => t('Rogue'),
+               5 => t('Priest'),
+               6 => t('Death Knight'),
+               7 => t('Shaman'),
+               8 => t('Mage'),
+               9 => t('Warlock'),
+               10 => t(''),
+               11 => t('Druid'),
+              );
+}
+
+/**
+ * Helper function to create the image icon used in links to wowarmory.com.
+ */
+function _armory_external_icon() {
+  $armorypath = drupal_get_path('module', 'armory');
+  return '<img src="'. base_path() . $armorypath .'/images/link.png" alt="'. EXTERNAL_ARMORY_LINK_TEXT .'" class="armory-ext-icon" />';
+}
+
+/**
+ * Helper function to create the professions filter form.
+ */
+function armory_prof_select_form(&$form_state, $profession = array()) {
+  $form = array();
+  $form['professions'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Filter professions'),
+  );
+
+  if (!empty($profession[1])) {
+    $form['professions']['filter'] = array(
+      '#type' => 'item',
+      '#value' => t('Looking for characters with the <strong>@profession</strong> profession and a skill of minimum <strong>@level</strong>.', array('@profession' => $profession[1], '@level' => $profession[2])),
+    );
+    $reset = t('Reset filters');
+    $form['professions']['reset'] = array(
+      '#type' => 'item',
+      '#value' => l($reset, 'armory/profession'),
+    );
+  }
+
+  $crafting = drupal_map_assoc(array(t('Alchemy'), t('Blacksmithing'), t('Enchanting'), t('Engineering'), t('Inscription'), t('Jewelcrafting'), t('Leatherworking'), t('Tailoring')));
+  $gathering = drupal_map_assoc(array(t('Herbalism'), t('Mining'), t('Skinning')));
+  $form['professions']['profession'] = array(
+    '#type' => 'select',
+    '#title' => t('Profession'),
+    '#options' => array('', t('Crafting') => $crafting, t('Gathering') => $gathering),
+    '#default_value' => $profession[1],
+  );
+
+  $form['professions']['level'] = array(
+    '#type' => 'select',
+    '#title' => t('Minimum level'),
+    '#options' => drupal_map_assoc(array('0', '50', '100', '150', '200', '250', '300', '375', '400', '450')),
+    '#default_value' => $profession[2],
+  );
+
+  $form['professions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Filter'),
+  );
+
+  return $form;
+}
+
+/**
+ * Submit handler for function armory_prof_select_form()
+ */
+function armory_prof_select_form_submit($form, &$form_state) {
+  $form_state['redirect'] = array('armory/profession/'. $form_state['values']['profession'] .'/'. $form_state['values']['level']);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,60 @@
+/* Armory overview */
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li a {
+  background: rgb(223,223,223);
+  border-color: rgb(123,123,123);
+  color: rgb(123,123,123);
+}
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li.ui-tabs-selected a, 
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li a:hover {
+  background: rgb(239,240,250);
+  border-color: rgb(24,24,24);
+  color: rgb(11,11,11);
+}
+/* Characters */
+.characters-character-tabs .item-list ul.characters-character-tab-links li a {
+  background: rgb(223,223,223);
+  border: 1px solid rgb(0,0,0);
+  border-bottom: 0;
+  color: rgb(123,123,123);
+}
+.characters-character-tabs .item-list ul.characters-character-tab-links li.ui-tabs-selected a {
+  background: rgb(255,255,255);
+  border: 1px solid rgb(24,24,24);
+  border-bottom: 1px solid transparent;
+  color: rgb(11,11,11);
+}
+.characters-character-sheet {
+  background: rgb(255,255,255);
+  border: 1px solid rgb(24,24,24);
+  color: rgb(11,11,11);
+}
+.characters-character-sheet.death-knight .characters-charname a {
+  color: rgb(196,30,59);
+}
+.characters-character-sheet.druid .characters-charname a {
+  color: rgb(255,125,10);
+}
+.characters-character-sheet.hunter .characters-charname a {
+  color: rgb(65,140,0);
+}
+.characters-character-sheet.mage .characters-charname a {
+  color: rgb(2,122,198);
+}
+.characters-character-sheet.paladin .characters-charname a {
+  color: rgb(195,90,135);
+}
+.characters-character-sheet.priest .characters-charname a {
+  color: rgb(12,12,12);
+}
+.characters-character-sheet.rogue .characters-charname a {
+  color: rgb(185,170,0);
+}
+.characters-character-sheet.shaman .characters-charname a {
+  color: rgb(36,89,255);
+}
+.characters-character-sheet.warlock .characters-charname a {
+  color: rgb(118,100,171);
+}
+.characters-character-sheet.warrior .characters-charname a {
+  color: rgb(129,86,40);
+}

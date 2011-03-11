@@ -1,0 +1,86 @@
+/* Armory overview */
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li a {
+  background: rgb(68,68,68);
+  border-color: rgb(45,45,45);
+  color: rgb(123,123,123);
+}
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li.ui-tabs-selected a, 
+#armory-overview-tabs.ui-tabs-nav ul.armory-tabs li a:hover {
+  background: rgb(45,45,45);
+  border-color: rgb(158,158,158);
+  color: rgb(255,255,255);
+}
+/* Characters */
+.characters-character-tabs .item-list ul.characters-character-tab-links li a {
+  background: rgb(38,38,38);
+  border: 1px solid rgb(0,0,0);
+  border-bottom: 0;
+  color: rgb(158,158,158);
+  padding: 10px 15px;
+}
+.characters-character-tabs .item-list ul.characters-character-tab-links li.ui-tabs-selected a {
+  background: rgb(45,45,45);
+  border: 1px solid rgb(158,158,158);
+  border-bottom: 1px solid transparent;
+  color: rgb(255,255,255);
+}
+.characters-character-sheet {
+  background: rgb(45,45,45);
+  border: 1px solid rgb(158,158,158);
+  color: rgb(238,238,238);
+}
+.characters-character-sheet.death-knight .characters-charname a {
+  color: rgb(196,30,59);
+}
+.characters-character-sheet.druid .characters-charname a {
+  color: rgb(255,125,10);
+}
+.characters-character-sheet.hunter .characters-charname a {
+  color: rgb(171,212,115);
+}
+.characters-character-sheet.mage .characters-charname a {
+  color: rgb(105,204,240);
+}
+.characters-character-sheet.paladin .characters-charname a {
+  color: rgb(245,140,186);
+}
+.characters-character-sheet.priest .characters-charname a {
+  color: rgb(255,255,255);
+}
+.characters-character-sheet.rogue .characters-charname a {
+  color: rgb(255,245,105);
+}
+.characters-character-sheet.shaman .characters-charname a {
+  color: rgb(36,89,255);
+}
+.characters-character-sheet.warlock .characters-charname a {
+  color: rgb(148,130,201);
+}
+.characters-character-sheet.warrior .characters-charname a {
+  color: rgb(199,156,110);
+}
+
+/* Guilds */
+.armory-table table {
+  background: rgb(38,38,38);
+  border: 1px solid rgb(238,238,238);
+  border-width: 1px 0;
+  color: rgb(255,255,255);
+}
+.armory-table table tr.odd {
+  background: rgb(38,38,38);
+}
+.armory-table table tr.even {
+  background: rgb(56,56,56);
+}
+.armory-table table tr.odd td.active {
+  background: rgb(38,38,45);
+  border: 0;
+}
+.armory-table table th {
+  border: 0;
+  border-bottom: 1px solid rgb(238,238,238);
+}
+.armory-table table tr.even td.active, .armory-table table th.active {
+  background: rgb(45,45,56);
+}

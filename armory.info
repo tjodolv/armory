@@ -1,0 +1,6 @@
+; $Id$
+name = Armory
+description = Gathers information about Warcraft characters and guilds to be displayed on your Drupal site.
+core = 6.x
+php = 5
+package = WoW Armory

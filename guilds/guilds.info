@@ -1,0 +1,7 @@
+; $Id$
+name = Guilds
+description = Helper module for Armory to manage guilds.
+core = 6.x
+php = 5
+package = WoW Armory
+dependencies[] = armory

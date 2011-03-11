@@ -1,0 +1,8 @@
+; $Id$
+name = Characters
+description = Helper module for Armory to manage characters.
+core = 6.x
+php = 5
+package = WoW Armory
+dependencies[] = armory
+dependencies[] = guilds

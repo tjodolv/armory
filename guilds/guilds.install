@@ -1,0 +1,145 @@
+<?php
+// $Id$ 
+
+/**
+ * @file guilds.install
+ * This file contains the database schema and installation hooks for guilds.module.
+ */
+
+/**
+ * Implementation of hook_install()
+ */
+function guilds_install() {
+  drupal_install_schema('guilds');
+  drupal_set_message(t('Guilds installed.'));
+}
+
+/**
+ * Implementation of hook_uninstall()
+ */
+function guilds_uninstall() {
+  drupal_uninstall_schema('guilds');
+}
+
+/**
+ * Implementation of hook_schema() 
+ */
+function guilds_schema() {
+  $schema['guilds'] = array(
+    'description' => 'Stores guilds to be displayed on the site.',
+    'fields' => array(
+      'gid' => array(
+        'description' => 'The unique guild ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'nid' => array(
+        'description' => 'The {node}.nid of the node this guild belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'vid' => array(
+        'description' => 'The {node}.vid of the node version this guild belongs to.',
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'guildname' => array(
+        'description' => 'The name of the guild.',
+        'type' => 'varchar',
+        'length' => '20',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'servername' => array(
+        'description' => 'The server the guild is located on.',
+        'type' => 'varchar',
+        'length' => '30',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'region' => array(
+        'description' => 'The region the server is located in.',
+        'type' => 'varchar',
+        'length' => '2', 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'faction' => array(
+        'description' => "The guild's faction.",
+        'type' => 'varchar',
+        'length' => '10', 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'ranks' => array(
+        'description' => "The guild's rank names.",
+        'type' => 'varchar',
+        'length' => '255', 
+        'not null' => TRUE,
+        'default' => '',
+      ),
+    ), // End fields.
+    'indexes' => array(
+      'servername_region' => array('servername', 'region'),
+      'region' => array('region'),
+      'servername' => array('servername'),
+      'faction' => array('faction'),
+    ), // End indexes.
+    'primary key' => array('gid'),
+  );
+
+  $schema['guilds_members'] = array(
+    'description' => "Stores guildmember lists, to facilitate tablesorting, searching and pagination on guilds and guildmembers throught Drupal's own API.",
+    'fields' => array(
+      'gid' => array(
+        'description' => "The guild id of the guild this member belongs to.",
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'cid' => array(
+        'description' => "If characters.module is installed, this field is used to join the character profiles into guild listings.",
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'charname' => array(
+        'description' => "The guildmember's character name.",
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'class' => array(
+        'description' => "The character's class.",
+        'type' => 'varchar',
+        'length' => 20,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'level' => array(
+        'description' => "The character's level",
+        'type' => 'int',
+        'length' => 2,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'rank' => array(
+        'description' => "The character's rank in the guild.",
+        'type' => 'int',
+        'length' => 2,
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'gid' => array('gid'),
+      'class' => array('class'),
+    ),
+  );
+
+  return $schema;
+}

@@ -1,0 +1,44 @@
+<?php
+// $Id$ 
+
+/**
+ * @file armory.install
+ * Installation functions for armory.module. 
+ * No database schema is installed. We simply check to see if the requirements are met.
+ */
+
+/**
+* Implementation of hook_requirements()
+*/
+function armory_requirements($phase) {
+  $requirements = array();
+  $t = get_t();
+  $value = '';
+  if ($phase == 'install') {
+    $error = FALSE;
+    if (!function_exists('curl_init')) {
+      $error = TRUE;
+      $value .= $t('cURL must be available for Armory to function properly.');
+      $severity = REQUIREMENT_ERROR;
+    }
+  }  
+  if (!function_exists('simplexml_load_file')) {
+    if ($error) {
+      $error = TRUE;
+      $value .= $t('The SimpleXML class is required. This class is built-in with PHP 5 and up.');
+      $severity = REQUIREMENT_ERROR;
+    }
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implementation of hook_install()
+ */
+function armory_install() {
+  drupal_set_message(t('Armory installed. You need to get the serverlists from Blizzard. This can be done by running cron.'));
+}
+
+
+
